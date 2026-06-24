@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Runner – Cyberpunk Endless Runner</title>
+  <meta name="description" content="Neon Runner: a cyberpunk endless runner. Jump over glowing obstacles, collect energy orbs, and beat your high score!" />
+
+  <style>
+    /* ================================================================
+       RESET & BASE
+    ================================================================ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --cyan:    #00ffff;
+      --magenta: #ff00ff;
+      --yellow:  #ffee00;
+      --red:     #ff0044;
+      --green:   #00ff88;
+      --bg:      #07070f;
+      --bg2:     #0d0d1a;
+      --text:    #e0e0ff;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      font-family: 'Courier New', Courier, monospace;
+      color: var(--text);
+      user-select: none;
+    }
+
+    /* ================================================================
+       GAME WRAPPER — maintains 16:9 aspect ratio
+    ================================================================ */
+    #game-wrapper {
+      position: relative;
+      width: min(100vw, 177.78vh); /* 16:9 */
+      height: min(100vh, 56.25vw);
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ================================================================
+       SCANLINES OVERLAY
+    ================================================================ */
+    #scanlines {
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0,0,0,0.06) 3px,
+        rgba(0,0,0,0.06) 4px
+      );
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* ================================================================
+       SCREEN OVERLAYS (Start / Game Over)
+    ================================================================ */
+    .screen {
+      position: absolute; inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: clamp(8px, 2vh, 18px);
+      background: rgba(7, 7, 15, 0.82);
+      backdrop-filter: blur(6px);
+      z-index: 10;
+      transition: opacity 0.3s ease;
+    }
+    .screen.hidden { display: none; }
+
+    /* Decorative scrolling marquee lines */
+    .marquee-row {
+      position: absolute;
+      left: 0; right: 0;
+      white-space: nowrap;
+      font-size: clamp(0.45rem, 1.1vw, 0.75rem);
+      letter-spacing: 0.25em;
+      color: rgba(0,255,255,0.08);
+      overflow: hidden;
+    }
+    .marquee-row:nth-child(1) { top: 15%; }
+    .marquee-row:nth-child(2) { top: 55%; }
+    .marquee-row:nth-child(3) { top: 82%; }
+    .marquee-inner {
+      display: inline-block;
+      animation: marquee-scroll 14s linear infinite;
+    }
+    .marquee-row:nth-child(2) .marquee-inner { animation-duration: 10s; animation-delay: -4s; }
+    .marquee-row:nth-child(3) .marquee-inner { animation-duration: 18s; animation-delay: -9s; }
+    @keyframes marquee-scroll {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* Title */
+    .game-title {
+      font-size: clamp(2.2rem, 7vw, 5rem);
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      line-height: 1;
+      background: linear-gradient(90deg, var(--cyan) 0%, var(--magenta) 50%, var(--yellow) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 18px var(--cyan));
+      animation: title-pulse 3s ease-in-out infinite;
+    }
+    @keyframes title-pulse {
+      0%, 100% { filter: drop-shadow(0 0 18px var(--cyan)); }
+      50%       { filter: drop-shadow(0 0 32px var(--magenta)); }
+    }
+
+    .subtitle {
+      font-size: clamp(0.55rem, 1.6vw, 0.9rem);
+      letter-spacing: 0.4em;
+      color: rgba(0,255,255,0.55);
+      text-transform: uppercase;
+    }
+
+    .start-hi {
+      font-size: clamp(0.7rem, 2vw, 1.1rem);
+      color: var(--yellow);
+      text-shadow: 0 0 12px var(--yellow);
+      letter-spacing: 0.15em;
+    }
+
+    /* Buttons */
+    .btn {
+      position: relative;
+      padding: 0.65em 2.8em;
+      font-family: inherit;
+      font-size: clamp(0.85rem, 2.5vw, 1.2rem);
+      font-weight: 700;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      background: transparent;
+      border: 2px solid var(--cyan);
+      color: var(--cyan);
+      cursor: pointer;
+      clip-path: polygon(10px 0%, 100% 0%, calc(100% - 10px) 100%, 0% 100%);
+      overflow: hidden;
+      transition: color 0.25s, background 0.25s, box-shadow 0.25s;
+    }
+    .btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(0,255,255,0.18), transparent);
+      transform: translateX(-110%);
+      transition: transform 0.45s ease;
+    }
+    .btn:hover::before  { transform: translateX(110%); }
+    .btn:hover {
+      background: rgba(0,255,255,0.12);
+      box-shadow: 0 0 24px var(--cyan), 0 0 48px rgba(0,255,255,0.25);
+      color: #fff;
+    }
+    .btn:active { transform: scale(0.96); }
+
+    /* Game Over Title */
+    .go-title {
+      font-size: clamp(2.5rem, 8vw, 5.5rem);
+      font-weight: 900;
+      color: var(--red);
+      letter-spacing: 0.08em;
+      text-shadow: 0 0 20px var(--red), 0 0 40px rgba(255,0,68,0.5);
+      animation: glitch-go 2.5s infinite;
+    }
+    @keyframes glitch-go {
+      0%,88%,100% { text-shadow: 0 0 20px var(--red), 0 0 40px rgba(255,0,68,0.5); transform: none; }
+      90%  { text-shadow: -3px 0 var(--cyan), 3px 0 var(--red); transform: translateX(-2px); }
+      92%  { text-shadow: 3px 0 var(--cyan), -3px 0 var(--red); transform: translateX(2px); }
+      94%  { text-shadow: 0 0 20px var(--red); transform: none; }
+    }
+
+    .go-score-line {
+      font-size: clamp(1rem, 3.5vw, 2rem);
+      letter-spacing: 0.1em;
+      color: #fff;
+    }
+    .go-score-line span { color: var(--cyan); text-shadow: 0 0 10px var(--cyan); }
+
+    .go-hi-line {
+      font-size: clamp(0.75rem, 2.2vw, 1.25rem);
+      color: var(--yellow);
+      text-shadow: 0 0 10px var(--yellow);
+      letter-spacing: 0.12em;
+    }
+
+    .controls-hint {
+      font-size: clamp(0.5rem, 1.3vw, 0.7rem);
+      color: rgba(255,255,255,0.25);
+      letter-spacing: 0.12em;
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    /* ================================================================
+       HUD (In-Game)
+    ================================================================ */
+    #hud {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+    #hud.hidden { display: none; }
+
+    #hud-score {
+      position: absolute;
+      top: clamp(6px, 1.5vh, 14px);
+      left: clamp(10px, 2vw, 24px);
+      font-size: clamp(0.85rem, 2.8vw, 1.5rem);
+      color: var(--cyan);
+      text-shadow: 0 0 12px var(--cyan);
+      letter-spacing: 0.1em;
+    }
+    #hud-hi {
+      position: absolute;
+      top: clamp(28px, 5vh, 48px);
+      left: clamp(10px, 2vw, 24px);
+      font-size: clamp(0.6rem, 1.8vw, 1rem);
+      color: rgba(255,238,0,0.7);
+      text-shadow: 0 0 8px var(--yellow);
+      letter-spacing: 0.1em;
+    }
+    #hud-orbs {
+      position: absolute;
+      top: clamp(6px, 1.5vh, 14px);
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: clamp(0.7rem, 2vw, 1.1rem);
+      color: var(--yellow);
+      text-shadow: 0 0 10px var(--yellow);
+      letter-spacing: 0.12em;
+    }
+
+    /* ================================================================
+       MOBILE JUMP BUTTON
+    ================================================================ */
+    #jump-btn {
+      position: absolute;
+      bottom: clamp(12px, 3vh, 24px);
+      right: clamp(12px, 3vw, 24px);
+      width: clamp(52px, 13vw, 72px);
+      height: clamp(52px, 13vw, 72px);
+      border-radius: 50%;
+      background: rgba(0,255,255,0.1);
+      border: 2px solid var(--cyan);
+      color: var(--cyan);
+      font-size: clamp(1.4rem, 5vw, 2.2rem);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      z-index: 20;
+      box-shadow: 0 0 16px rgba(0,255,255,0.4);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      transition: background 0.1s, box-shadow 0.1s;
+    }
+    #jump-btn:active {
+      background: rgba(0,255,255,0.28);
+      box-shadow: 0 0 32px var(--cyan);
+    }
+    @media (hover: none) and (pointer: coarse) {
+      #jump-btn { display: flex; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+
+  <!-- Main canvas -->
+  <canvas id="canvas"></canvas>
+
+  <!-- CRT scanlines -->
+  <div id="scanlines"></div>
+
+  <!-- START SCREEN -->
+  <div id="start-screen" class="screen">
+    <div class="marquee-row"><span class="marquee-inner">SYS.INIT ... NEURAL_LINK_ESTABLISHED ... RUNNER_v3.0 ... GRID_ONLINE ... DANGER_ZONES_ACTIVE ... SPEED_LIMIT: NONE ... &nbsp; SYS.INIT ... NEURAL_LINK_ESTABLISHED ... RUNNER_v3.0 ... GRID_ONLINE ... DANGER_ZONES_ACTIVE ... SPEED_LIMIT: NONE ...</span></div>
+    <div class="marquee-row"><span class="marquee-inner">OBSTACLES_AHEAD ... ENERGY_ORBS_DETECTED ... JUMP_OR_DIE ... NEON_CITY_SECTOR_7 ... TURBO_MODE_UNLOCKED ... &nbsp; OBSTACLES_AHEAD ... ENERGY_ORBS_DETECTED ... JUMP_OR_DIE ... NEON_CITY_SECTOR_7 ...</span></div>
+    <div class="marquee-row"><span class="marquee-inner">HIGH_VOLTAGE ... SYNTHETIC_RAIN ... GRID_RUNNERS_ACTIVE ... ESCAPE_PROTOCOL ... PHASE_SHIFT ... &nbsp; HIGH_VOLTAGE ... SYNTHETIC_RAIN ... GRID_RUNNERS_ACTIVE ... ESCAPE_PROTOCOL ...</span></div>
+
+    <h1 class="game-title">NEON RUNNER</h1>
+    <p class="subtitle">&#9658; cyberpunk endless runner &#9668;</p>
+    <p class="start-hi" id="start-hi-display">BEST &nbsp; 0</p>
+    <button class="btn" id="play-btn">&#9654; &nbsp; PLAY</button>
+    <p class="controls-hint">SPACE / W / UP ARROW &nbsp;&#9474;&nbsp; Double Jump Supported &nbsp;&#9474;&nbsp; Tap button on mobile</p>
+  </div>
+
+  <!-- GAME OVER SCREEN -->
+  <div id="go-screen" class="screen hidden">
+    <p class="go-title">GAME OVER</p>
+    <p class="go-score-line">SCORE &nbsp; <span id="go-score-val">0</span></p>
+    <p class="go-hi-line" id="go-hi-line">BEST &nbsp; 0</p>
+    <button class="btn" id="restart-btn">&#8634; &nbsp; RESTART</button>
+    <p class="controls-hint">Press SPACE to restart</p>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="hud-score">SCORE &nbsp;<span id="hud-score-val">0</span></div>
+    <div id="hud-hi">BEST &nbsp;<span id="hud-hi-val">0</span></div>
+    <div id="hud-orbs">&#11043; &nbsp;<span id="hud-orbs-val">0</span></div>
+  </div>
+
+  <!-- Mobile Jump Button -->
+  <button id="jump-btn" aria-label="Jump">&#8679;</button>
+
+</div>
+
+<script>
+/* ====================================================================
+   NEON RUNNER — Game Engine
+   Single-file · No external dependencies · Web Audio API for SFX
+   ==================================================================== */
+
+// ── DOM References ───────────────────────────────────────────────────
+const canvas     = document.getElementById('canvas');
+const ctx        = canvas.getContext('2d');
+const startScr   = document.getElementById('start-screen');
+const goScr      = document.getElementById('go-screen');
+const hud        = document.getElementById('hud');
+const playBtn    = document.getElementById('play-btn');
+const restartBtn = document.getElementById('restart-btn');
+const jumpBtn    = document.getElementById('jump-btn');
+const elScore    = document.getElementById('hud-score-val');
+const elHi       = document.getElementById('hud-hi-val');
+const elOrbs     = document.getElementById('hud-orbs-val');
+const elGoScore  = document.getElementById('go-score-val');
+const elGoHi     = document.getElementById('go-hi-line');
+const elStartHi  = document.getElementById('start-hi-display');
+
+// ── Internal Canvas Resolution (always 16:9) ─────────────────────────
+const W = 800;
+const H = 300;
+canvas.width  = W;
+canvas.height = H;
+
+// ── Game Constants ───────────────────────────────────────────────────
+const GROUND_Y      = H - 55;   // Y coordinate of ground surface
+const GRAVITY       = 0.58;
+const JUMP_V        = -13.5;    // velocity on first jump
+const DOUBLE_JUMP_V = -11.5;    // velocity on second (double) jump
+const BASE_SPEED    = 5;        // initial scroll speed (px/frame)
+const MAX_SPEED     = 15;       // maximum scroll speed
+const SPEED_RAMP    = 0.00085;  // speed added every frame
+const ORB_PTS       = 25;       // score per orb collected
+const PW = 28, PH = 42;        // player width & height (px)
+
+// Obstacle spawn timing (frames)
+const OBS_SPAWN_BASE = 110;
+const OBS_SPAWN_MIN  = 50;
+
+// ── Game State ───────────────────────────────────────────────────────
+let STATE   = 'start';  // 'start' | 'playing' | 'dead'
+let score, orbCount, speed, frame, animId;
+let obsTimer, orbTimer, obsInterval;
+let hiScore = parseInt(localStorage.getItem('nrHi') || '0');
+
+// ── Player Object ────────────────────────────────────────────────────
+const player = {
+  x: 80, y: 0,     // position (top-left corner)
+  vy: 0,            // vertical velocity
+  onGround: true,
+  jumps: 0,         // 0=ready, 1=first jump used, 2=both jumps used
+  flash: 0,         // flash effect frames remaining (orb collect)
+  trail: [],        // previous positions for motion-blur trail
+};
+
+// ── Entity Arrays ────────────────────────────────────────────────────
+let obstacles  = [];
+let orbs       = [];
+let particles  = [];
+let floatTexts = [];
+let bgStars    = [];
+
+// ── Grid scroll offset ───────────────────────────────────────────────
+let gridX = 0;
+
+/* ====================================================================
+   WEB AUDIO ENGINE — synthesised SFX, zero external files
+   ==================================================================== */
+let audioCtx = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+  catch(e) {}
+}
+
+/**
+ * Play a synthesised tone.
+ * @param {number} freq - target frequency in Hz
+ * @param {string} type - oscillator type ('square'|'sine'|'sawtooth'|'triangle')
+ * @param {number} dur  - duration in seconds
+ * @param {number} vol  - peak volume (0-1)
+ * @param {number} [f0] - optional start frequency for a pitch sweep
+ */
+function tone(freq, type, dur, vol, f0) {
+  if (!audioCtx) return;
+  vol = vol || 0.25;
+  try {
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = type;
+    const now = audioCtx.currentTime;
+    osc.frequency.setValueAtTime(f0 != null ? f0 : freq, now);
+    if (f0 != null) osc.frequency.exponentialRampToValueAtTime(freq, now + dur);
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.start(now);
+    osc.stop(now + dur);
+  } catch(e) {}
+}
+
+// Named SFX shortcuts
+function sfxJump()       { tone(420, 'square',   0.14, 0.22, 180); }
+function sfxDoubleJump() { tone(680, 'square',   0.13, 0.22, 900); }
+function sfxOrb() {
+  tone(880,  'sine', 0.18, 0.28);
+  setTimeout(function(){ tone(1200, 'sine', 0.14, 0.20); }, 90);
+}
+function sfxDeath() {
+  tone(220, 'sawtooth', 0.40, 0.45, 440);
+  setTimeout(function(){ tone(80, 'sawtooth', 0.55, 0.45, 180); }, 280);
+}
+
+/* ====================================================================
+   BACKGROUND RENDERING
+   ==================================================================== */
+
+/** Populate the star field with randomised star objects. */
+function initStars() {
+  bgStars = [];
+  for (var i = 0; i < 90; i++) {
+    bgStars.push({
+      x:     Math.random() * W,
+      y:     Math.random() * (GROUND_Y - 10),
+      r:     Math.random() * 1.4 + 0.3,
+      spd:   Math.random() * 0.4 + 0.1,  // parallax scroll speed
+      a:     Math.random() * 0.6 + 0.3,  // base opacity
+      phase: Math.random() * Math.PI * 2, // twinkle phase offset
+    });
+  }
+}
+
+/**
+ * Pre-generate a static city skyline silhouette for the background.
+ * This runs once at startup and the result is stored in `cityShapes`.
+ */
+var cityShapes = (function() {
+  var shapes = [];
+  var x = 0;
+  while (x < W + 80) {
+    var bw = 18 + Math.floor(Math.random() * 38);
+    var bh = 20 + Math.floor(Math.random() * 90);
+    var wins = [];
+    var wCount = 2 + Math.floor(Math.random() * 7);
+    for (var w = 0; w < wCount; w++) {
+      wins.push({
+        wx: 3 + Math.floor(Math.random() * (bw - 10)),
+        wy: 4 + Math.floor(Math.random() * (bh - 12)),
+        lit: Math.random() < 0.55,
+        col: Math.random() < 0.5 ? 'rgba(255,238,0,0.55)' : 'rgba(0,200,255,0.55)',
+      });
+    }
+    shapes.push({ x: x, y: GROUND_Y - bh, w: bw, h: bh, wins: wins });
+    x += bw + 4 + Math.floor(Math.random() * 18);
+  }
+  return shapes;
+})();
+
+/** Draw the full background: sky, stars, city, grid, ground. */
+function drawBackground() {
+  // Sky gradient
+  var sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  sky.addColorStop(0,   '#070714');
+  sky.addColorStop(0.6, '#0a0a1a');
+  sky.addColorStop(1,   '#0f0f22');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, GROUND_Y);
+
+  // Sub-ground fill
+  ctx.fillStyle = '#050510';
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+  // Parallax stars
+  for (var i = 0; i < bgStars.length; i++) {
+    var s = bgStars[i];
+    if (STATE === 'playing') {
+      s.x -= s.spd * (speed / BASE_SPEED);
+      if (s.x < 0) { s.x = W; s.y = Math.random() * (GROUND_Y - 10); }
+    }
+    var twinkle = 0.65 + 0.35 * Math.sin(frame * 0.04 + s.phase);
+    ctx.save();
+    ctx.globalAlpha = s.a * twinkle;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // City silhouette
+  ctx.save();
+  ctx.globalAlpha = 0.30;
+  for (var b = 0; b < cityShapes.length; b++) {
+    var bl = cityShapes[b];
+    ctx.fillStyle = '#0a0818';
+    ctx.fillRect(bl.x, bl.y, bl.w, bl.h);
+    for (var ww = 0; ww < bl.wins.length; ww++) {
+      var win = bl.wins[ww];
+      if (win.lit) {
+        ctx.fillStyle = win.col;
+        ctx.fillRect(bl.x + win.wx, bl.y + win.wy, 3, 3);
+      }
+    }
+  }
+  ctx.restore();
+
+  // Scrolling perspective floor grid
+  if (STATE === 'playing') gridX = (gridX + speed * 0.4) % 48;
+  ctx.save();
+  ctx.globalAlpha = 0.10;
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 1;
+  // Vertical lines
+  for (var vx = -gridX; vx < W; vx += 48) {
+    ctx.beginPath(); ctx.moveTo(vx, GROUND_Y); ctx.lineTo(vx, H); ctx.stroke();
+  }
+  // Horizontal lines (perspective depth)
+  for (var row = 1; row <= 5; row++) {
+    var gy = GROUND_Y + row * (H - GROUND_Y) / 5;
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Ground glow strip
+  var glow = ctx.createLinearGradient(0, GROUND_Y - 8, 0, GROUND_Y + 18);
+  glow.addColorStop(0, 'rgba(0,255,255,0.18)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, GROUND_Y - 8, W, 26);
+
+  // Ground line
+  ctx.save();
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth   = 2;
+  ctx.shadowColor = '#00ffff';
+  ctx.shadowBlur  = 12;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y); ctx.lineTo(W, GROUND_Y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ====================================================================
+   PLAYER RENDERING
+   ==================================================================== */
+function drawPlayer() {
+  var p = player;
+  var flashOn = p.flash > 0;
+  var cc  = flashOn ? '#ffff00' : '#00ffff'; // primary colour
+  var cc2 = flashOn ? '#ff8800' : '#004444'; // fill colour
+
+  // Motion blur trail (older positions fading out)
+  for (var t = 0; t < p.trail.length; t++) {
+    var tr = p.trail[t];
+    var a  = (t + 1) / p.trail.length * 0.22;
+    var sc = 0.4 + (t / p.trail.length) * 0.6;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle   = cc;
+    ctx.shadowColor = cc;
+    ctx.shadowBlur  = 6;
+    var tw = PW * sc, th = PH * sc;
+    ctx.fillRect(tr.x + (PW - tw) / 2, tr.y + (PH - th) / 2, tw, th);
+    ctx.restore();
+  }
+
+  ctx.save();
+
+  // Outer glow + border
+  ctx.shadowColor = cc;
+  ctx.shadowBlur  = flashOn ? 32 : 18;
+  ctx.strokeStyle = cc;
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(p.x, p.y, PW, PH);
+
+  // Body fill
+  ctx.fillStyle = cc2;
+  ctx.fillRect(p.x + 3, p.y + 3, PW - 6, PH - 6);
+
+  // Visor strip
+  ctx.fillStyle  = cc;
+  ctx.shadowBlur = 10;
+  ctx.fillRect(p.x + 5, p.y + 10, PW - 10, 5);
+
+  // Chest stripe
+  ctx.globalAlpha = 0.4;
+  ctx.fillStyle   = cc;
+  ctx.fillRect(p.x + 7, p.y + 22, PW - 14, 2);
+  ctx.globalAlpha = 1;
+
+  // Running leg animation (only when grounded)
+  if (p.onGround) {
+    var swing = Math.sin(frame * 0.35) * 6;
+    ctx.fillStyle  = cc;
+    ctx.shadowBlur = 6;
+    ctx.fillRect(p.x + 4,       p.y + PH, 8, 7 + swing); // left leg
+    ctx.fillRect(p.x + PW - 12, p.y + PH, 8, 7 - swing); // right leg
+  }
+
+  ctx.restore();
+}
+
+/* ====================================================================
+   OBSTACLES
+   ==================================================================== */
+/*
+  Obstacle types:
+    'tall'  – tall narrow wall (jump over)
+    'low'   – low wide wall (jump over)
+    'spike' – triangular spike (jump over)
+    'gate'  – top + bottom bars with a gap (player must fly through gap)
+*/
+var OBS_TYPES = ['tall', 'low', 'spike', 'gate'];
+
+/** Spawn a new obstacle at the right edge of the screen. */
+function spawnObstacle() {
+  // Avoid 'gate' type until player has built up some speed
+  var type = OBS_TYPES[Math.floor(Math.random() * OBS_TYPES.length)];
+  if (type === 'gate' && speed < BASE_SPEED + 2) type = 'tall';
+
+  var o = { type: type, x: W + 20 };
+
+  if (type === 'tall') {
+    o.h = 45 + Math.random() * 50;
+    o.w = 18 + Math.random() * 8;
+    o.y = GROUND_Y - o.h;
+    o.color = '#ff0044';
+  } else if (type === 'low') {
+    o.h = 22 + Math.random() * 16;
+    o.w = 40 + Math.random() * 28;
+    o.y = GROUND_Y - o.h;
+    o.color = '#ff00cc';
+  } else if (type === 'spike') {
+    o.base  = 26 + Math.random() * 14;
+    o.h     = 38 + Math.random() * 20;
+    o.w     = o.base;
+    o.y     = GROUND_Y - o.h;
+    o.color = '#aa00ff';
+  } else if (type === 'gate') {
+    o.w       = 14;
+    o.bottomH = 60 + Math.random() * 30;   // height of bottom bar
+    o.gapH    = 50 + Math.random() * 22;   // height of the gap
+    o.topH    = GROUND_Y - o.bottomH - o.gapH; // height of top bar
+    o.color   = '#ff8800';
+  }
+
+  obstacles.push(o);
+}
+
+/** Render all active obstacles. */
+function drawObstacles() {
+  for (var i = 0; i < obstacles.length; i++) {
+    var o = obstacles[i];
+    ctx.save();
+    ctx.shadowColor = o.color;
+    ctx.shadowBlur  = 16;
+    ctx.fillStyle   = o.color;
+
+    if (o.type === 'tall' || o.type === 'low') {
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+      // Highlight strip on top
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(o.x + 2, o.y + 2, o.w - 4, 5);
+      // Thin border
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(o.x, o.y, o.w, o.h);
+
+    } else if (o.type === 'spike') {
+      ctx.beginPath();
+      ctx.moveTo(o.x,              GROUND_Y);
+      ctx.lineTo(o.x + o.base / 2, o.y);
+      ctx.lineTo(o.x + o.base,     GROUND_Y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+
+    } else if (o.type === 'gate') {
+      // Bottom bar
+      if (o.bottomH > 0)
+        ctx.fillRect(o.x, GROUND_Y - o.bottomH, o.w, o.bottomH);
+      // Top bar
+      if (o.topH > 0)
+        ctx.fillRect(o.x, 0, o.w, o.topH);
+      // Dashed energy beam across the gap
+      ctx.save();
+      ctx.strokeStyle   = o.color;
+      ctx.globalAlpha   = 0.35;
+      ctx.lineWidth     = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.lineDashOffset = -(frame % 20); // animate the dash
+      ctx.beginPath();
+      ctx.moveTo(o.x + o.w / 2, o.topH > 0 ? o.topH : 0);
+      ctx.lineTo(o.x + o.w / 2, GROUND_Y - o.bottomH);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+}
+
+/**
+ * Return a collision rectangle for a given obstacle (with slight inner margin).
+ * Returns null for gate obstacles (handled separately in checkCollisions).
+ */
+function obsHitRect(o) {
+  var m = 4; // pixel margin for forgiveness
+  if (o.type === 'tall' || o.type === 'low') {
+    return { x: o.x + m, y: o.y + m, w: o.w - m*2, h: o.h - m*2 };
+  } else if (o.type === 'spike') {
+    // Use a slightly narrowed and raised rect to match triangle shape
+    return { x: o.x + m*2, y: o.y + 8, w: o.base - m*4, h: o.h - 10 };
+  }
+  return null;
+}
+
+/* ====================================================================
+   ENERGY ORBS
+   ==================================================================== */
+
+/** Spawn an energy orb at a random height at the right edge of the screen. */
+function spawnOrb() {
+  // Three height options: ground level, mid-air, high
+  var heights = [
+    GROUND_Y - PH - 4,
+    GROUND_Y - PH - 52,
+    GROUND_Y - PH - 95,
+  ];
+  var h = heights[Math.floor(Math.random() * heights.length)];
+  orbs.push({
+    x:     W + 10,
+    y:     h + PH / 2,        // store orb centre
+    r:     9,
+    phase: Math.random() * Math.PI * 2,
+    done:  false,
+  });
+}
+
+/** Render all active (not yet collected) orbs. */
+function drawOrbs() {
+  for (var i = 0; i < orbs.length; i++) {
+    var o = orbs[i];
+    if (o.done) continue;
+
+    var pulse = 1 + 0.18 * Math.sin(frame * 0.12 + o.phase);
+    var r = o.r * pulse;
+
+    ctx.save();
+
+    // Outer aura / glow gradient
+    var aura = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, r * 3);
+    aura.addColorStop(0,    'rgba(255,230,30,0.7)');
+    aura.addColorStop(0.45, 'rgba(255,180,0,0.3)');
+    aura.addColorStop(1,    'rgba(255,100,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, r * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core orb
+    ctx.shadowColor = '#ffdd00';
+    ctx.shadowBlur  = 22;
+    ctx.fillStyle   = '#ffee44';
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Specular highlight
+    ctx.fillStyle  = 'rgba(255,255,255,0.75)';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(o.x - r * 0.28, o.y - r * 0.28, r * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hexagon ring around orb
+    ctx.strokeStyle = '#ffaa00';
+    ctx.lineWidth   = 1.5;
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur  = 8;
+    drawHexPath(o.x, o.y, r + 4 + pulse);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+}
+
+/** Trace a regular hexagon path centred at (cx, cy) with radius r. */
+function drawHexPath(cx, cy, r) {
+  ctx.beginPath();
+  for (var k = 0; k < 6; k++) {
+    var a = (Math.PI / 3) * k - Math.PI / 6;
+    if (k === 0) ctx.moveTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+    else          ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+  }
+  ctx.closePath();
+}
+
+/* ====================================================================
+   PARTICLE SYSTEM
+   ==================================================================== */
+
+/**
+ * Spawn a burst of particles at (x, y) — used when collecting an orb.
+ * @param {number} x - orb centre X
+ * @param {number} y - orb centre Y
+ */
+function burstOrb(x, y) {
+  var cols = ['#ffee44','#ffaa00','#ff6600','#ffffff','#00ffff','#ff00cc'];
+  for (var i = 0; i < 22; i++) {
+    var a   = (Math.PI * 2 * i) / 22 + (Math.random() - 0.5) * 0.6;
+    var spd = 1.5 + Math.random() * 4.5;
+    particles.push({
+      x: x, y: y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd - 1.5,
+      life:  1,
+      decay: 0.022 + Math.random() * 0.025,
+      size:  2 + Math.random() * 4.5,
+      color: cols[Math.floor(Math.random() * cols.length)],
+      square: Math.random() < 0.4,
+    });
+  }
+}
+
+/**
+ * Spawn a small downward burst when the player double-jumps.
+ * @param {number} x - player foot X
+ * @param {number} y - player foot Y
+ */
+function burstDoubleJump(x, y) {
+  for (var i = 0; i < 10; i++) {
+    var a   = Math.PI + (Math.random() - 0.5) * 1.2;
+    var spd = 1 + Math.random() * 3;
+    particles.push({
+      x: x, y: y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      life:  1,
+      decay: 0.04 + Math.random() * 0.03,
+      size:  2.5 + Math.random() * 2.5,
+      color: '#00ffff',
+      square: false,
+    });
+  }
+}
+
+/** Update all particles (physics + fade) and draw them. */
+function tickParticles() {
+  particles = particles.filter(function(p){ return p.life > 0.01; });
+  ctx.save();
+  for (var i = 0; i < particles.length; i++) {
+    var p = particles[i];
+    p.x   += p.vx;
+    p.y   += p.vy;
+    p.vy  += 0.12;           // particle gravity
+    p.life -= p.decay;
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle   = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur  = 8;
+    var s = p.size * p.life;
+    if (p.square) {
+      ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/* ====================================================================
+   FLOATING SCORE TEXTS  (+25, etc.)
+   ==================================================================== */
+
+/** Spawn a rising score label at (x, y). */
+function spawnFloat(x, y, text, color) {
+  floatTexts.push({ x: x, y: y, text: text, color: color, life: 1, vy: -1.2 });
+}
+
+/** Update & draw all floating score texts. */
+function tickFloatTexts() {
+  floatTexts = floatTexts.filter(function(f){ return f.life > 0; });
+  ctx.save();
+  ctx.font      = 'bold 14px "Courier New"';
+  ctx.textAlign = 'center';
+  for (var i = 0; i < floatTexts.length; i++) {
+    var f = floatTexts[i];
+    f.y   += f.vy;
+    f.life -= 0.018;
+    ctx.globalAlpha = Math.max(0, f.life);
+    ctx.fillStyle   = f.color;
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur  = 10;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.restore();
+}
+
+/* ====================================================================
+   VELOCITY / SPEED BAR (canvas-drawn HUD element)
+   ==================================================================== */
+function drawSpeedBar() {
+  var pct = (speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED);
+  var bx = W - 92, by = 10, bw = 82, bh = 6;
+
+  ctx.save();
+  ctx.font      = '8px "Courier New"';
+  ctx.fillStyle = 'rgba(255,0,80,0.55)';
+  ctx.fillText('VELOCITY', bx, by + bh + 12);
+
+  // Background track
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(bx, by, bw, bh);
+
+  // Coloured fill (green → yellow → red)
+  var g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+  g.addColorStop(0,   '#00ff88');
+  g.addColorStop(0.5, '#ffee00');
+  g.addColorStop(1,   '#ff0044');
+  ctx.fillStyle = g;
+  ctx.fillRect(bx, by, bw * Math.min(pct, 1), bh);
+
+  // Border
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(bx, by, bw, bh);
+  ctx.restore();
+}
+
+/* ====================================================================
+   COLLISION DETECTION
+   ==================================================================== */
+
+/**
+ * Axis-aligned bounding box overlap test with forgiveness margin.
+ * @param {number} m - inward margin (pixels of forgiveness)
+ */
+function rectsHit(ax, ay, aw, ah, bx, by, bw, bh, m) {
+  m = m || 5;
+  return ax + m < bx + bw
+      && ax + aw - m > bx
+      && ay + m < by + bh
+      && ay + ah - m > by;
+}
+
+/**
+ * Circle vs AABB overlap test.
+ * Finds the closest point on the rect and checks if the circle covers it.
+ */
+function circleRectHit(cx, cy, cr, rx, ry, rw, rh) {
+  var nx = Math.max(rx, Math.min(cx, rx + rw));
+  var ny = Math.max(ry, Math.min(cy, ry + rh));
+  return (cx - nx) * (cx - nx) + (cy - ny) * (cy - ny) < cr * cr;
+}
+
+/** Run all collision checks for the current frame. */
+function checkCollisions() {
+  var px = player.x, py = player.y;
+
+  // Obstacle collision
+  for (var i = 0; i < obstacles.length; i++) {
+    var o   = obstacles[i];
+    var hit = false;
+
+    if (o.type === 'tall' || o.type === 'low' || o.type === 'spike') {
+      var r = obsHitRect(o);
+      if (r) hit = rectsHit(px, py, PW, PH, r.x, r.y, r.w, r.h);
+
+    } else if (o.type === 'gate') {
+      // Player must pass through the gap; hitting top or bottom bar = death
+      var inGapX = px + PW > o.x && px < o.x + o.w;
+      if (inGapX) {
+        var gapBottom = GROUND_Y - o.bottomH;
+        var gapTop    = o.topH > 0 ? o.topH : 0;
+        if (py < gapTop + 4 && o.topH > 0)      hit = true; // hit top bar
+        if (py + PH > gapBottom - 4)             hit = true; // hit bottom bar
+      }
+    }
+
+    if (hit) { triggerDeath(); return; }
+  }
+
+  // Orb collection
+  for (var j = 0; j < orbs.length; j++) {
+    var orb = orbs[j];
+    if (orb.done) continue;
+    if (circleRectHit(orb.x, orb.y, orb.r + 6, px, py, PW, PH)) {
+      orb.done = true;
+      score    += ORB_PTS;
+      orbCount += 1;
+      burstOrb(orb.x, orb.y);
+      spawnFloat(orb.x, orb.y - 12, '+' + ORB_PTS, '#ffee44');
+      sfxOrb();
+      player.flash = 10; // trigger flash effect
+    }
+  }
+}
+
+/* ====================================================================
+   JUMP
+   ==================================================================== */
+function doJump() {
+  // If on a non-playing screen, start the game
+  if (STATE === 'dead')  { startGame(); return; }
+  if (STATE === 'start') { startGame(); return; }
+
+  if (player.jumps === 0) {
+    // First jump
+    player.vy       = JUMP_V;
+    player.onGround = false;
+    player.jumps    = 1;
+    sfxJump();
+  } else if (player.jumps === 1) {
+    // Double jump
+    player.vy    = DOUBLE_JUMP_V;
+    player.jumps = 2;
+    burstDoubleJump(player.x + PW / 2, player.y + PH);
+    sfxDoubleJump();
+  }
+  // jumps === 2 → both jumps used; no more until landing
+}
+
+/* ====================================================================
+   GAME OVER
+   ==================================================================== */
+function triggerDeath() {
+  STATE = 'dead';
+  sfxDeath();
+
+  // Save high score to localStorage
+  if (score > hiScore) {
+    hiScore = score;
+    localStorage.setItem('nrHi', String(hiScore));
+  }
+
+  elGoScore.textContent = String(score);
+  elGoHi.textContent    = 'BEST  ' + hiScore;
+
+  hud.classList.add('hidden');
+  goScr.classList.remove('hidden');
+}
+
+/* ====================================================================
+   RESET + START GAME
+   ==================================================================== */
+function resetState() {
+  player.x        = 80;
+  player.y        = GROUND_Y - PH;
+  player.vy       = 0;
+  player.onGround = true;
+  player.jumps    = 0;
+  player.flash    = 0;
+  player.trail    = [];
+
+  obstacles  = [];
+  orbs       = [];
+  particles  = [];
+  floatTexts = [];
+
+  score      = 0;
+  orbCount   = 0;
+  speed      = BASE_SPEED;
+  frame      = 0;
+  gridX      = 0;
+  obsTimer   = 0;
+  orbTimer   = 0;
+  obsInterval = OBS_SPAWN_BASE;
+}
+
+function startGame() {
+  initAudio();
+  resetState();
+  STATE = 'playing';
+
+  startScr.classList.add('hidden');
+  goScr.classList.add('hidden');
+  hud.classList.remove('hidden');
+
+  cancelAnimationFrame(animId);
+  animId = requestAnimationFrame(gameLoop);
+}
+
+/* ====================================================================
+   UPDATE — all gameplay logic (called every frame)
+   ==================================================================== */
+function update() {
+  if (STATE !== 'playing') return;
+
+  frame++;
+
+  // Gradually increase difficulty
+  speed = Math.min(MAX_SPEED, speed + SPEED_RAMP);
+
+  // Time-based score (1 point every 6 frames ≈ 10 pts/s at 60 FPS)
+  if (frame % 6 === 0) score++;
+
+  // ── Player physics ──
+  player.vy += GRAVITY;
+  player.y  += player.vy;
+
+  // Ground landing
+  if (player.y >= GROUND_Y - PH) {
+    player.y        = GROUND_Y - PH;
+    player.vy       = 0;
+    player.onGround = true;
+    player.jumps    = 0;
+  }
+
+  // Decrement flash effect counter
+  if (player.flash > 0) player.flash--;
+
+  // Update motion trail (ring buffer)
+  player.trail.unshift({ x: player.x, y: player.y });
+  if (player.trail.length > 9) player.trail.pop();
+
+  // ── Obstacle spawning ──
+  obsTimer++;
+  // Reduce spawn interval as speed increases
+  obsInterval = Math.max(OBS_SPAWN_MIN, OBS_SPAWN_BASE - (speed - BASE_SPEED) * 7);
+  if (obsTimer >= obsInterval) {
+    spawnObstacle();
+    obsTimer = 0;
+  }
+
+  // ── Orb spawning ──
+  orbTimer++;
+  if (orbTimer >= 130) {
+    if (Math.random() < 0.65) spawnOrb();
+    orbTimer = 0;
+  }
+
+  // ── Scroll entities left ──
+  for (var i = 0; i < obstacles.length; i++) obstacles[i].x -= speed;
+  for (var j = 0; j < orbs.length; j++)      if (!orbs[j].done) orbs[j].x -= speed;
+
+  // Remove off-screen entities
+  obstacles = obstacles.filter(function(o){ return o.x + (o.w || 40) > -20; });
+  orbs      = orbs.filter(function(o){ return !o.done && o.x > -30; });
+
+  // ── Collision detection ──
+  checkCollisions();
+
+  // ── Update HUD text ──
+  elScore.textContent = String(score);
+  elHi.textContent    = String(Math.max(score, hiScore));
+  elOrbs.textContent  = String(orbCount);
+}
+
+/* ====================================================================
+   MAIN RENDER/UPDATE LOOP
+   ==================================================================== */
+function gameLoop() {
+  ctx.clearRect(0, 0, W, H);
+
+  drawBackground();
+  drawObstacles();
+  drawOrbs();
+  tickParticles();
+  drawPlayer();
+  tickFloatTexts();
+  if (STATE === 'playing') drawSpeedBar();
+
+  update();
+
+  animId = requestAnimationFrame(gameLoop);
+}
+
+/* ====================================================================
+   INPUT HANDLING
+   ==================================================================== */
+// Keyboard
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+    e.preventDefault();
+    doJump();
+  }
+});
+
+// Mobile jump button — touchstart for lowest latency
+jumpBtn.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  doJump();
+}, { passive: false });
+jumpBtn.addEventListener('click', function() { doJump(); });
+
+// Also allow tapping the canvas itself to jump (mobile UX)
+canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  doJump();
+}, { passive: false });
+
+// UI Buttons
+playBtn.addEventListener('click',    function() { startGame(); });
+restartBtn.addEventListener('click', function() { startGame(); });
+
+/* ====================================================================
+   BOOT — initialise background assets and start idle animation loop
+   ==================================================================== */
+initStars();
+elStartHi.textContent = 'BEST  ' + hiScore;
+elHi.textContent      = String(hiScore);
+STATE = 'start';
+frame = 0;
+
+// Idle animation loop — keeps background alive on start/game-over screens
+(function idleTick() {
+  if (STATE !== 'playing') {
+    ctx.clearRect(0, 0, W, H);
+    frame++;
+    drawBackground();
+    tickParticles();
+  }
+  animId = requestAnimationFrame(idleTick);
+})();
+</script>
+</body>
+</html>
