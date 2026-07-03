@@ -1,0 +1,21 @@
+{
+  "name": "neon-runner",
+  "version": "1.0.0",
+  "description": "Neon Runner: a cyberpunk endless runner. Jump over glowing obstacles, collect energy orbs, and beat your high score!",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve",
+    "dev": "npx serve",
+    "build": "echo 'No build step required for static site'"
+  },
+  "keywords": [
+    "game",
+    "cyberpunk",
+    "endless-runner",
+    "neon",
+    "browser-game"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {}
+}
